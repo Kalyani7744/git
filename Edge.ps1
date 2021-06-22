@@ -1,14 +1,21 @@
-﻿#Download and Install edge
-    $WebClient = New-Object System.Net.WebClient
-    $wc.UseDefaultCredentials = $true
-    $WebClient.DownloadFile("https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/59c478d3-513a-4060-837b-01ad385d6aaa/MicrosoftEdgeEnterpriseX86.msi","C:\Packages\MicrosoftEdgeBetaEnterpriseX64.msi")
-    sleep 5
-    
-    Start-Process msiexec.exe -Wait '/I C:\Packages\MicrosoftEdgeBetaEnterpriseX64.msi /qn' -Verbose 
-    sleep 5
-    $WshShell = New-Object -comObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Azure Portal.lnk")
-    $Shortcut.TargetPath = """C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"""
-    $argA = """https://portal.azure.com"""
-    $Shortcut.Arguments = $argA 
-    $Shortcut.Save()
+Write-Host "Installing Microsoft Edge..." -ForegroundColor Cyan
+
+Write-Host "Downloading..."
+$msiPath = "$env:TEMP\MicrosoftEdgeEnterpriseX64.msi"
+(New-Object Net.WebClient).DownloadFile('http://dl.delivery.mp.microsoft.com/filestreamingservice/files/c39f1d27-cd11-495a-b638-eac3775b469d/MicrosoftEdgeEnterpriseX64.msi', $msiPath)
+
+Write-Host "Installing..."
+cmd /c start /wait msiexec /i "$msiPath" /qn /norestart
+Remove-Item $msiPath
+
+Set-Service edgeupdate -StartupType Manual -ErrorAction SilentlyContinue
+Set-Service edgeupdatem -StartupType Manual -ErrorAction SilentlyContinue
+
+Unregister-ScheduledTask -TaskName MicrosoftEdgeUpdateTaskMachineCore -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName MicrosoftEdgeUpdateTaskMachineUA -Confirm:$false -ErrorAction SilentlyContinue
+
+# command-line options for testing: https://help.appveyor.com/discussions/questions/45894-can-we-include-microsoft-edge-browser#comment_48015293
+
+# "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --no-first-run --noerrdialogs --no-default-browser-check --start-maximized
+
+Write-Host "Installed Microsoft Edge" -ForegroundColor Green

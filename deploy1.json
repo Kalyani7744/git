@@ -1,0 +1,229 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "type": "string"
+    },
+    "adminPassword": {
+      "type": "securestring"
+    },
+    "DeploymentID": {
+      "type": "string"
+    }
+    },
+  "variables": {
+    "virtualMachineName": "[concat('LABVM-',parameters('DeploymentID'))]",
+    "virtualNetworkName": "vnet",
+    "networkInterfaceName": "nic",
+    "networkSecurityGroupName": "nsg",
+    "publicIpAddressName": "[concat('vmpip', uniqueString(resourceGroup().id))]",
+    "diagnosticsStorageAccountName": "[concat(uniquestring(resourceGroup().id), 'diagstorage')]",
+    "subnetName": "subnet",
+    "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
+    "subnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]"
+  },
+    "resources": [
+      {
+        "name": "[variables('virtualMachineName')]",
+        "type": "Microsoft.Compute/virtualMachines",
+        "apiVersion": "2016-04-30-preview",
+        "location": "[resourceGroup().location]",
+        "dependsOn": [
+          "[concat('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))]",
+          "[concat('Microsoft.Storage/storageAccounts/', variables('diagnosticsStorageAccountName'))]"
+        ],
+        "tags": {
+          "displayName": "virtualMachine"
+        },
+        "properties": {
+          "osProfile": {
+            "computerName": "[variables('virtualMachineName')]",
+            "adminUsername": "[parameters('adminUsername')]",
+            "adminPassword": "[parameters('adminPassword')]",
+            "windowsConfiguration": {
+              "provisionVmAgent": "true"
+            }
+          },
+          "hardwareProfile": {
+            "vmSize": "Standard_D4s_v3"
+          },
+          "storageProfile": {
+            "imageReference": {
+              "publisher": "MicrosoftWindowsServer",
+               "offer": "WindowsServer",
+              "sku": "2019-Datacenter",
+              "version": "latest"
+            },
+            "osDisk": {
+              "createOption": "fromImage",
+              "managedDisk": {
+                "storageAccountType": "Premium_LRS"
+              }
+            },
+            "dataDisks": []
+          },
+          "networkProfile": {
+            "networkInterfaces": [
+              {
+                "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+              }
+            ]
+          },
+          "diagnosticsProfile": {
+            "bootDiagnostics": {
+              "enabled": true,
+              "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('diagnosticsStorageAccountName')), '2015-06-15').primaryEndpoints['blob']]"
+            }
+          }
+        }
+      },
+      {
+        "name": "[variables('diagnosticsStorageAccountName')]",
+        "type": "Microsoft.Storage/storageAccounts",
+        "apiVersion": "2015-06-15",
+        "location": "[resourceGroup().location]",
+        "tags": {
+          "displayName": "storageAccount"
+        },
+        "properties": {
+          "accountType": "Standard_LRS"
+        }
+      },
+      {
+        "name": "[variables('virtualNetworkName')]",
+        "type": "Microsoft.Network/virtualNetworks",
+        "apiVersion": "2017-08-01",
+        "location": "[resourceGroup().location]",
+        "tags": {
+          "displayName": "virtualnetwork"
+        },
+        "properties": {
+          "addressSpace": {
+            "addressPrefixes": [
+              "10.0.2.0/24"
+            ]
+          },
+          "subnets": [
+            {
+              "name": "[variables('subnetName')]",
+              "properties": {
+                "addressPrefix": "10.0.2.0/24"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "[variables('networkInterfaceName')]",
+        "type": "Microsoft.Network/networkInterfaces",
+        "apiVersion": "2016-09-01",
+        "location": "[resourceGroup().location]",
+        "dependsOn": [
+          "[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]",
+          "[concat('Microsoft.Network/publicIpAddresses/', variables('publicIpAddressName'))]",
+          "[concat('Microsoft.Network/networkSecurityGroups/', variables('networkSecurityGroupName'))]"
+        ],
+        "tags": {
+          "displayName": "networkInterface"
+        },
+        "properties": {
+          "ipConfigurations": [
+            {
+              "name": "ipconfig1",
+              "properties": {
+                "subnet": {
+                  "id": "[variables('subnetRef')]"
+                },
+                "privateIPAllocationMethod": "Dynamic",
+                "publicIpAddress": {
+                  "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]"
+                }
+              }
+            }
+          ],
+          "networkSecurityGroup": {
+            "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+          }
+        }
+      },
+      {
+        "name": "[variables('publicIpAddressName')]",
+        "type": "Microsoft.Network/publicIPAddresses",
+        "location": "[resourceGroup().location]",
+        "apiVersion": "2015-06-15",
+        "dependsOn": [],
+        "tags": {
+          "displayName": "publicIpAddress"
+        },
+        "properties": {
+          "publicIPAllocationMethod": "Dynamic",
+          "dnsSettings": {
+            "domainNameLabel": "[variables('publicIpAddressName')]"
+          }
+        }
+      },
+      {
+        "name": "[variables('networkSecurityGroupName')]",
+        "type": "Microsoft.Network/networkSecurityGroups",
+        "apiVersion": "2017-06-01",
+        "location": "[resourceGroup().location]",
+        "tags": {
+          "displayName": "networkSecurityGroup"
+        },
+        "properties": {
+          "securityRules": [
+            {
+              "name": "default-allow-rdp",
+              "properties": {
+                "priority": 1000,
+                "protocol": "TCP",
+                "access": "Allow",
+                "direction": "Inbound",
+                "sourceAddressPrefix": "*",
+                "sourcePortRange": "*",
+                "destinationAddressPrefix": "*",
+                "destinationPortRange": "3389"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "Microsoft.Compute/virtualMachines/extensions",
+        "name": "[concat(variables('virtualMachineName'),'/mycustomscriptextension')]",
+        "apiVersion": "2015-05-01-preview",
+        "location": "[resourceGroup().location]",
+        "dependsOn": [
+          "[concat('Microsoft.Compute/virtualMachines/',variables('virtualMachineName'))]"
+        ],
+        "properties": {
+          "publisher": "Microsoft.Compute",
+          "type": "CustomScriptExtension",
+          "typeHandlerVersion": "1.7",
+          "autoUpgradeMinorVersion": true,
+          "settings": {
+            "fileUris": [
+              "https://demo5670.blob.core.windows.net/demo1/Edge.ps1"
+            ],
+            "commandToExecute": "powershell.exe -ExecutionPolicy Unrestricted -File Edge.ps1"
+        },
+        "protectedSettings": {}
+          }
+      }
+    ],
+    "outputs": {
+      "adminUsername": {
+        "type": "string",
+        "value": "[parameters('adminUsername')]"
+      },
+      "adminPassword": {
+        "type": "string",
+        "value": "[parameters('adminPassword')]"
+      },
+      "publicIpAdrress": {
+        "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('publicIpAddressName'))).dnsSettings.fqdn]",
+        "type": "string"
+      }
+    }
+  }
